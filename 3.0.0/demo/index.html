@@ -21,7 +21,7 @@
 KISSY.config({
   packages: {
     kg: {
-      base: '../'
+      base: '//assets.daily.taobao.net/g/kg'
       ,ignorePackageNameInUri: true
       ,charset: 'utf-8'
       ,tag: +new Date()
@@ -32,10 +32,10 @@ KISSY.config({
 <br>
 <br>
 <br>
-<span id="J_Start">点击显示图片</span>
+<span id="J_Start">点击我演示：mobile-album</span>
 
 <script>
-  KISSY.use('node, kg/mobile-album/3.0.0/index, ua', function(S, Node, Album, UA){
+  KISSY.use('node, kg/mobile-album/3.0.0/index, ua', function(S, Node, Album){
     var $ = Node.all;
 
     var imgs = [{
@@ -51,13 +51,10 @@ KISSY.config({
     var album = null;
     $('#J_Start').on('tap', function(){
       if( album == null ){
-        album = new Album({
-          box: '#J_AlbumMBox'
-        });
+        album = new Album();
       }
 
       album.render(imgs);
-      album.show();
     })
   });
   </script>

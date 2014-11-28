@@ -1,69 +1,33 @@
 ## 综述
 
-MobileAlbum是。
+MobileAlbum是支持单指拖拽，切换图片；支持双指pinch缩放图片的无线端相册组件。
 
-* 版本：2.0.0
+* 版本：3.0.0
 * 作者：yumen.gk
-* demo：[http://kg.kissyui.com/mobile-album/2.0.0/demo/index.html](http://kg.kissyui.com/mobile-album/2.0.0/demo/index.html)
-
-## 初始化组件
-
-    S.use('kg/mobile-album/2.0.0/index', function (S, MobileAlbum) {
-         var mobile-album = new MobileAlbum();
-    })
+* demo：[点击这里](http://kg.kissyui.com/mobile-album/3.0.0/demo/index.html)
 
 ## 使用方法
 ###依赖dom结构
-```html
-<section id="J_PinchBoxWrap" class="f18-pinch-box" style="display: none;">
-    <div id="J_PinchBox">
-        
-    </div>
-    <div class="pinch-ctl">
-        <a class="J_Back back" href="##">返回</a>
-        <ul class="slide-pinch-trigger J_SlidePinchTrigger">
-        </ul>
-        <ul class="image-desc"></ul>
-    </div>
-</section>
+```
+无依赖
 ```
 
-###javascript 编写
-```javascript
-KISSY.use('node, json, kg/mobile-album/2.0.0/index', function(S, Node, JSON, MoAm){
-    var $ = Node.all;
+### 初始化组件
 
-    var MoAm = new MoAm({
-        box: $('#J_PinchBox')
-        ,boxWrap: $('#J_PinchBoxWrap')
-        ,minScale: 0.2
-        ,maxScale: 20
+```
+    var imgs = [{
+      src: 'http://img01.taobaocdn.com/imgextra/i1/687471686/TB1yIiUGFXXXXciXVXXXXXXXXXX_!!687471686-2-tstar.png_290x10000.jpg'
+    }, {
+      src: 'http://gtms01.alicdn.com/tps/i1/TB1hQ7aGFXXXXcBXXXXGAs77XXX-600-3546.jpg'
+    }, {
+      src: 'http://img03.taobaocdn.com/imgextra/i3/291599648/TB1VnDQGpXXXXaJXpXXXXXXXXXX_!!291599648-0-tstar.jpg_620x10000.jpg'
+    }, {
+      src: 'http://img02.taobaocdn.com/imgextra/i2/14701043388472450/T1BcdRXpRlXXXXXXXX_!!290804701-0-tstar.jpg_400x400.jpg'
+    }];
+    
+    S.use('kg/mobile-album/3.0.0/index', function (S, MobileAlbum) {
+         var album = new MobileAlbum();
+
+         album.render(imgs);
     })
-
-    var data = [{
-        minSrc: 'image.jpg_80x80.jpg',
-        originSrc: 'image.jpg',
-        index: 0,
-        size: {
-            width: 80,
-            height: 50
-        }
-    },{
-        minSrc: 'image2.jpg_80x80.jpg',
-        originSrc: 'image2.jpg',
-        index: 1,
-        size: {
-            width: 50,
-            height: 80
-        }
-    }]
-
-    MoAm.setIndex(parseInt(target.attr('data-idx')))
-    MoAm.data(data);
-    MoAm.init();
-
-    $(document).delegate('singleTap click', '.J_Back', function(e){
-        MoAm.hide();
-    })
-})
 ```
