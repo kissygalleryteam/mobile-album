@@ -2,9 +2,7 @@
 
 MobileAlbum是支持单指拖拽，切换图片；支持双指pinch缩放图片的无线端相册组件。
 
-* 版本：3.0.0
 * 作者：yumen.gk
-* demo：[点击这里](http://kg.kissyui.com/mobile-album/3.0.0/demo/index.html)
 
 ## 使用方法
 ###依赖dom结构
