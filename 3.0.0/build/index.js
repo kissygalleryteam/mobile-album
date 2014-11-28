@@ -1,1181 +1,1315 @@
 /*
 combined files : 
 
-kg/mobile-album/2.0.0/core/pc-mouse
-kg/mobile-album/2.0.0/core/gesture
-kg/mobile-album/2.0.0/wakeup-popup/index
-kg/mobile-album/2.0.0/index
+kg/mobile-album/3.0.0/tools
+kg/mobile-album/3.0.0/onefinger
+kg/mobile-album/3.0.0/twofinger
+kg/mobile-album/3.0.0/slide
+kg/mobile-album/3.0.0/album
+kg/mobile-album/3.0.0/album-xtpl
+kg/mobile-album/3.0.0/index
 
 */
 /**
-  * PC 端的功能 剥离到这里来
+  * mobile album tools
   */
 
-KISSY.add('kg/mobile-album/2.0.0/core/pc-mouse',function(S, Node, Base){
-    var $ = Node.all;
+KISSY.add('kg/mobile-album/3.0.0/tools',function(S){
+  var Tools = {
+    // 根据图片当前偏移量，获取溢出容器的偏移量；  todo: 融合单轴滑动 处理和判断
+    getBoxOffsetIfOverflow: function(startTransform, elOriginSize, offset){
+      var clientWidth = document.documentElement.clientWidth;
+      var clientHeight = document.documentElement.clientHeight;
 
-    function PCMouse(config){
-        this.box = config.box;
-        this.config = config;
+      var overflow_x = 0;
+      var overflow_y = 0;
 
-        this.livingImg = null || this.box.one('img');
+      if(  startTransform.offset.x + offset.x > 0 ){
+        overflow_x = startTransform.offset.x + offset.x
+      }
+      else if( elOriginSize.width * startTransform.scale + (startTransform.offset.x + offset.x) - clientWidth < 0 ){
+        overflow_x = elOriginSize.width * startTransform.scale + (startTransform.offset.x + offset.x) - clientWidth;
 
-        //touchstart status
-        this.touchstartStatus = {
-            matrix: [0,0,0,0,0,0,0]
-            ,distance: 0
-            ,points: new Array()
-        }
+      }
+      else{
+        overflow_x = 0;
+      }
 
-        //dd action
-        this.ddAction = {
-            left: false
-            ,right: false
-            ,top: false
-            ,bottom: false
-        }
-        this.ddPrevPoint = null;
+      // if(overflow_x == 0){
+        overflow_y = startTransform.offset.y + offset.y
+      // }
 
-        this.touchType = null;
+      return {
+        x: overflow_x
+        ,y: overflow_y
+      }
+    }
 
-        if( undefined == S.UA.mobile ){
-            this._bindEventPC();
+    // 使图片贴合到容器边缘
+    ,setCloseTo_slideline: function(el, elOriginSize, elOffset, transform){
+      var scale = transform.scale;
+      var offset = transform.offset;
+
+      var currScale = 1;
+      var currOffset = {x: 0, y: 0};
+
+      // container size 不一定事client
+      var clientWidth = document.documentElement.clientWidth;
+      var clientHeight = document.documentElement.clientHeight;
+
+      if( scale < 1 ){
+        currScale = 1;
+        currOffset = {x: 0, y: 0};
+      }
+      else{
+        currScale = scale;
+        currOffset = offset;
+
+        if( elOriginSize.width * scale > clientWidth ){
+          if(  offset.x + offset.x > 0){
+            currOffset.x = 0;
+          }
+          else if( elOriginSize.width * scale + offset.x - clientWidth < 0 ){
+            currOffset.x = 0 - (elOriginSize.width * scale - clientWidth);
+          }
         }
         else{
-            this._bindEvent();
+          currOffset.x = 0;
         }
-        this.test();
+
+        if( elOriginSize.height * scale > clientHeight ){
+          if( offset.y > 0 - elOffset.top * scale ){
+            // currOffset.y = 0 - (this.get('clientHeight') - this.get('elOriginSize').height)/2*(scale*scale-1);
+            currOffset.y = 0 - elOffset.top * scale;
+          }
+          else if( elOriginSize.height * scale + offset.y + elOffset.top * scale - clientHeight < 0 ){
+            currOffset.y = 0 - ( elOriginSize.height * scale + elOffset.top * scale  - clientHeight);
+          }
+        }
+        else{
+          currOffset.y = 0 - (elOffset.top * scale - (clientHeight - elOriginSize.height * scale) / 2)
+        }
+      }
+
+      return {
+        scale: currScale
+        ,offset: currOffset
+      }
     }
 
-    var o = {
-        test: function(){
+    ,setTransform: function(el, transform, timer, finger){
+      if( !el || el.length == 0 ) return false;
 
-        }
-
-        ,'freeze': function(){
-
-        }
-        ,'unfreeze': function(){
-
-        }
-
-        ,initTouchstartStatus: function(){
-            var self = this;
-
-            self.livingImg = self.box.one('img');
-
-            self.touchstartStatus.matrix = getMatrix(self.livingImg);
-        }
-
-        ,setDDAction: function(begin, end){
-            if( begin.left > end.left ){
-                this.ddAction.left = true;
-                this.ddAction.right = false;
-            }
-            else if( begin.left < end.left ){
-                this.ddAction.left = false;
-                this.ddAction.right = true;
-            }
-            else{
-                this.ddAction.left = false;
-                this.ddAction.right = false;
-            }
-
-            if( begin.top > end.top ){
-                this.ddAction.top = true;
-                this.ddAction.bottom = false;
-            }
-            else if( begin.top < end.top ){
-                this.ddAction.top = false;
-                this.ddAction.bottom = true;
-            }
-            else{
-                this.ddAction.top = false;
-                this.ddAction.bottom = false;
-            }
-        }
-
-        ,_bindEventPC: function(){
-            var self = this;
-
-            self.box.on('mousedown', function(e){
-                //only left mousedown
-                if( e.button != 0 ){
-                    return ;
-                }
-                if( e.target.tagName.toUpperCase() != 'IMG' ){
-                    return ;
-                }
-
-                self.initTouchstartStatus();
-
-                self.handleMousedown(e);
-            })
-
-            self.box.on('mousewheel DOMMouseScroll', self.handleMousewheel, self);
-        }
-        ,handleMousedown: function(e){
-            e.halt();
-            var self = this;
-
-            self.moveStartPoint = {
-                left: e.pageX
-                ,top: e.pageY
-            }
-
-            self.ddMouseMask = $('<div style="z-index: 999999;position: fixed;left:0;top:0;width: 2.0.0%;height: 2.0.0%;cursor: move;"></div>');
-            self.ddMouseMask.appendTo($(document.body));
-
-            $(document).on('mousemove', self.handleMousemove, self);
-            $(document).on('mouseup',   self.handleMouseup,   self);
-        }
-        ,handleMousemove: function(e){
-            e.halt();
-            var self = this;
-
-            if( self.isFreeze == true){
-                return ;
-            }
-
-            var point = {
-                left: e.pageX
-                ,top: e.pageY
-            }
-
-            var d = {
-                left: point.left - self.moveStartPoint.left
-                ,top: point.top  - self.moveStartPoint.top
-            }
-
-            var newMatrix = S.clone(self.touchstartStatus.matrix);
-            newMatrix[4] += d.left;
-            newMatrix[5] += d.top;
-            $(document).fire('dd-mouse', {
-                matrix: newMatrix
-            })
-        }
-        ,handleMouseup: function(e){
-            var self = this;
-
-            self.ddMouseMask.remove();
-            delete self.ddMouseMask;
-
-            $(document).fire('dd-mouse-end');
-
-            $(document).detach('mousemove', self.handleMousemove, self);
-            $(document).detach('mouseup',   self.handleMouseup,   self);
-        }
-        ,handleMousewheel: function(e){
-            var self = this;
-            if( e.target.tagName.toUpperCase() != 'IMG' ){
-                return ;
-            }
-            e.halt();
-
-            if(self.isFreeze == true){
-                return ;
-            }
-            
-            this.initTouchstartStatus();
-
-            var action = '';
-            
-            if( S.UA.os == 'windows' ){
-                if( e.deltaY > 0 ){//放大
-                    // action = 'zoom';
-                    action = 1.1;
-                }
-                else if( e.deltaY < 0 ){
-                    // action = 'shrunk';
-                    action = 0.9;
-                }
-            }
-            else if( /mac/.test(S.UA.os) ){
-                //mac
-                if( e.deltaY < 0){
-                    action = 0 - e.deltaY + 1;
-                }
-                else if( e.deltaY > 0){
-                    action = 1 - e.deltaY;
-                }
-            }
-            else{
-                action = 1;
-            }
-            //落点坐标
-            var origin = {
-                left: e.clientX - self.touchstartStatus.matrix[4]
-                ,top: e.clientY - self.touchstartStatus.matrix[5]
-            }
-            var newMatrix = self.resetMatrixByScaleAndOrigin(action, origin, self.touchstartStatus.matrix);
-            $(document).fire('d_wheel', {
-                matrix: newMatrix
-            })
-        }
-        ,resetMatrixByScaleAndOrigin: function(scale, origin, currentMatrix){
-            var newMatrix = S.clone(currentMatrix);
-
-            newMatrix[0] = newMatrix[3] = scale * currentMatrix[0];
-
-            newMatrix[4] = -1 * origin.left * (scale-1) + currentMatrix[4];
-            newMatrix[5] = -1 * origin.top  * (scale-1) + currentMatrix[5];
-
-            return newMatrix;
-        }
+      el.css('-webkit-transform', 'translate(' + transform.offset.x + 'px,' + transform.offset.y + 'px) scale(' + transform.scale + ')');
+      el.data('transform', transform);
+      if( timer * 1.5 ){
+        el.addClass('transition_back');
+        setTimeout(function(){
+          el.removeClass('transition_back')
+        }, timer * 1.5)
+      }
     }
 
-    function getMatrix(el, value){
-        var transformName = '-webkit-transform';
-        if( el.css(transformName) == '' ){
-            transformName = 'transform';
-        }
-        if(el.css(transformName) == ''){
-            return [2.0.0,0,2.0.0,0];
-        }
+    // 缩放图片： 根据放大倍数，放大重心点
+    ,setScaleByOrigin: function(scale, startTransform, originPoint){
+      var new_scale = scale * startTransform.scale;
 
-        var matrix = el.css(transformName).match(/matrix\((.*)\)/)[1].split(',');
-        for(var i = 0; i < matrix.length; ++i){
-            matrix[i] = parseFloat(matrix[i]);
-        }
-        return matrix;
+      var O = {
+        x: (startTransform.scale - new_scale) / startTransform.scale * (originPoint.x - startTransform.offset.x)
+        ,y: (startTransform.scale - new_scale) / startTransform.scale * (originPoint.y - startTransform.offset.y)
+      }
+
+      var offset = {
+        x: startTransform.offset.x + O.x
+        ,y: startTransform.offset.y + O.y
+      };
+
+      return {
+        scale: new_scale
+        ,offset: offset
+      }
     }
 
-    S.extend(PCMouse, Base, o);
+    ,getOffsetOnTwoPoints: function(p1, p2){
+      return {
+        x: p2.x - p1.x
+        ,y: p2.y - p1.y
+      }
+    }
 
-    return PCMouse;
+    // 一跟手指滑动时，获取touch 坐标
+    ,getTouchPoint: function(touches, offset){
+      if(!offset){
+        offset = {left: 0, top: 0};
+      }
+      return {
+        x: touches[0].pageX - offset.left
+        ,y: touches[0].pageY - offset.top
+      }
+    }
 
+    // 两根手指滑动时， 获取touch 坐标
+    ,getTouchPoints: function(touches, offset){
+      if(!offset){
+        offset = {left: 0, top: 0};
+      }
+      return Array.prototype.slice.call(touches).map(function (touch) {
+        return {
+            x: touch.pageX - offset.left,
+            y: touch.pageY - offset.top
+        };
+      });
+    }
+
+    ,getSlideAction: function(points, count_points, overflow, transform){
+      if( !points || points.length <= 1 ){
+        return false;
+      }
+
+      var clientWidth = document.documentElement.clientWidth;
+      var clientHeight = document.documentElement.clientHeight;
+
+      var len = points.length;
+      var dt = points[len-1].t - points[0].t;
+
+      if( Math.abs(overflow.x) >  clientWidth / 2){
+        if( overflow.x < 0 ){
+          return 'next';
+        }
+        else{
+          return 'prev';
+        }
+      }
+
+      if( dt < 500 ){
+        var slideAddition = points[count_points-1].x - points[count_points-2].x;
+
+        var t_a = 0, t_d = 0, all_t = 0, all_d = 0;
+        for(var i = 0; i < count_points-1; ++i ){
+          var a = points[i], b = points[i+1];
+          if( a.x > b.x ){
+            ++t_a;
+          }
+          else if(a.x < b.x){
+            ++t_d;
+          }
+          all_t += Math.abs(a.t-b.t);
+          all_d += Math.abs(a.x-b.x);
+        }
+
+        // scale == 1 || (overflow.x != 0)
+        if( transform.scale == 1 || Math.abs(overflow.x) > clientWidth / 10 ){
+          // console.log(all_d/all_t, t_d, t_a, count_points)
+
+          var speed = 0.3;
+          if( all_d / all_t > speed && t_d == count_points - 1 ){
+            // console.log('prev')
+            return 'prev';
+          }
+          else if( all_d / all_t > speed && t_a == count_points - 1 ){
+            // console.log('next')
+            return 'next';
+          }
+        }
+      }
+
+      return '';
+    }
+
+    // 矫正到x,y轴直线
+    ,getRectifiedCoo: function(points, prev_action){
+      if( points.length <= 1 ){
+        return {
+          point: points[points.length-1]
+          ,action: prev_action
+        }
+      }
+
+      prev_action = prev_action || '';
+
+      var len = points.length;
+      var action = prev_action;
+      for(var i = 0; i < len - 1; ++i){
+        // console.log(action)
+        action = rectify(points[i], points[i+1], action);
+      }
+
+      // p2 will be correct
+      function rectify(p1, p2, action){
+        var dx = Math.abs(p2.x - p1.x)
+        ,dy = Math.abs(p2.y - p1.y);
+
+        if( action == 'y' ){
+          p2.y = p1.y;
+          return 'y';
+        }
+        else if(action == 'x'){
+          p2.x = p1.x;
+          return 'x';
+        }
+
+        if( dx > dy ){
+          p2.y = p1.y;
+          return 'y';
+        }
+        else{
+          p2.x = p1.x;
+          return 'x';
+        }
+      }
+
+      // getRectifiedCoo return
+      return {
+        point: points[len-1]
+        ,action: action
+      };
+    }
+  }
+
+  return Tools;
 }, {
-    requires: ['node', 'base']
+  requires: []
 })
 /**
- * 
- * @authors yumen.gk(yumen.gk@taobao.com\ g.gaokai@gmail.com)
- * @date    2013-12-05
- * @desc    pinch事件 注册机 包含dd
- * @version image-gesture v5
- * @desc   
- * 
- * 使用说明： 该代理工具，仅仅代理<img>的touchstart， touchmove，touchend事件，外部通过监听自定义事件完成 <img>的matrix值的修改
- */
+  * 一根手指在图片上滑动，产生的效果
+  * @param{DOM_Object} 容器的dom引用 box
+  * @param{String} 容器内，有且仅有一个子元素的class标记名，用于委托事件处理，实现切换图片是锁的作用
+  */
 
-KISSY.add('kg/mobile-album/2.0.0/core/gesture',function(S, Node, Base, PcMouse){
-    var $ = Node.all;
+KISSY.add('kg/mobile-album/3.0.0/onefinger',function(S, Base, Node, Tools){
+  var $ = Node.all;
+  var COUNT_POINTS = 2;
 
-    function PinchGesture(config){
-        this.box = config.box;
-        this.config = config;
+  function OneFinger(cfg){
+    OneFinger.superclass.constructor.call(this, cfg);
+  }
 
-        this.config.listIdx = 0;
+  var ATTRS = {
+    // DOM_Object
+    box: {value: null}
 
-        this.livingImg = null || this.box.one('img');
+    // className
+    ,elTrigger: {value: ''}
 
-        //touchstart status
-        this.touchstartStatus = {
-            matrix: [0,0,0,0,0,0,0]
-            ,distance: 0
-            ,points: new Array()
-            ,time: 0
-        }
-
-        this.boxOffset = {left: 0, top: 0};
-
-        //dd action
-        this.ddAction = {
-            left: false
-            ,right: false
-            ,top: false
-            ,bottom: false
-        }
-        this.ddPrevPoint = null;
-
-        this.pinchPrevPoint = new Array(2);
-
-        this.touchType = null;
-
-        if( undefined == S.UA.mobile ){
-            new PcMouse(config);
-        }
-        else{
-            this._bindEvent();
-        }
-        this.test(); 
+    // 图片原始尺寸
+    ,elOriginSize: {
+      value: {width: 0, height: 0}
     }
 
-    var o = {
-        test: function(){
-
-        }
-
-        ,'setBoxOffset': function(offset){
-            this.boxOffset = offset;
-        }
-
-        ,'freeze': function(){
-
-        }
-        ,'unfreeze': function(){
-
-        }
-
-        ,initTouchstartStatus: function(){
-            var self = this;
-
-            self.livingImg = self.box.all('img').item(self.config.listIdx);
-
-            self.touchstartStatus.matrix = getMatrix(self.livingImg);
-        }
-
-        ,_bindEvent: function(){
-            var self = this;
-            self.box.on('touchstart', function(e){
-                if( e.target.tagName.toUpperCase() != 'IMG' ){
-                    return;
-                }
-                if( e.touches && e.touches.length == 1 ){
-                    self.box.fire('touchend', e);
-                    self.touchType = 'dd';
-                    self.handleDDStart(e);
-                }
-
-                else if( e.touches && e.touches.length == 2 ){
-                    $(document).fire('touchend', e);
-                    self.touchType = 'pinch';
-                    self.handlePinchStart(e);
-                }
-            })
-
-            //touched 兜底
-            //help for pinch-end
-            self.box.on('touchend', function(e){
-                if( self.touchType == 'pinch' ){
-                    self.handlePinchEnd(e);
-                }
-                else if( self.touchType == 'dd' ){
-                    ;
-                }
-            })
-        }
-
-        ,handleDDStart: function(e){
-            e.halt();
-            var self = this;
-            self.initTouchstartStatus();
-
-            var points = new Array(2);
-            points[0] = {
-                left: e.touches[0].pageX
-                ,top: e.touches[0].pageY
-            }
-
-            self.touchstartStatus.points = points;
-            self.touchstartStatus.time = 0;
-
-            self.ddPrevPoint = points[0];
-            self.fire('dd-start', {
-                matrix: self.touchstartStatus.matrix
-            });
-            self.box.on('touchmove', self.handleDDIng, self);
-            self.box.on('touchend',   self.handleDDEnd, self);
-        }
-        ,handleDDIng: function(e){
-            if( ! (e.touches && e.touches.length == 1) ){
-                return ;
-            }
-            e.halt();
-            var self = this;
-            if( self.touchType == 'pinch' ){
-                return ;
-            }
-
-            var points = new Array(2);
-            points[0] = {
-                left: e.touches[0].pageX
-                ,top: e.touches[0].pageY
-            }
-
-            var d = {
-                left: points[0].left - self.touchstartStatus.points[0].left
-                ,top: points[0].top  - self.touchstartStatus.points[0].top
-            }
-
-            var newMatrix = S.clone(self.touchstartStatus.matrix);
-            newMatrix[4] += d.left;
-            newMatrix[5] += d.top;
-
-            self.fire('dding', {
-                matrix: newMatrix
-                ,d: d
-                ,interval_d: {
-                    left: points[0].left - self.ddPrevPoint.left
-                    ,top: points[0].top - self.ddPrevPoint.top
-                }
-            })
-
-            self.ddPrevPoint = points[0];
-        }
-        ,handleDDEnd: function(e){
-            var self = this;
-            self.box.detach('touchmove', self.handleDDIng, self);
-            self.box.detach('touchend',   self.handleDDEnd, self);   
-            if( self.touchType != 'dd' ){
-                return false;
-            }
-            self.touchType = null;
-            self.fire('dd-end');
-
-            // if( e.touches[0].pageX == self.touchstartStatus.points[0].left && e.touches[0].pageY == self.touchstartStatus.points[0].top ){
-            //     self.fire('liketap');
-            // }
-        }
-
-        ,handlePinchStart: function(e){
-            e.halt();
-            var self = this;
-            self.fire('pinch-start');
-            
-            self.initTouchstartStatus();
-            //图片真实可见内容的左上角 偏移量 值
-            var points = new Array(2);
-            for(var i = 0; i < e.touches.length; ++i){
-                points[i] = {
-                    left: e.touches[i].pageX - self.touchstartStatus.matrix[4] - self.boxOffset.left,
-                    top:  e.touches[i].pageY - self.touchstartStatus.matrix[5] - self.boxOffset.top
-                };
-            }
-            self.touchstartStatus.points = points;
-            self.touchstartStatus.distance = getTwopointDistance(points);
-
-            self.pinchPrevPoint = points;
-
-            $(document).on('touchmove', self.handlePinching, self);
-            $(document).on('touchend',  self.handlePinchEnd, self);
-        }
-        ,handlePinching: function(e){
-            var self = this;
-            if( self.touchType != 'pinch' ){
-                return ;
-            }
-            if( !(e.touches && e.touches.length == 2) ){
-                return ;
-            }
-
-            e.halt();
-
-            //图片真实可见内容的左上角 偏移量 值
-            var points = new Array(2);
-            for(var i = 0; i < e.touches.length; ++i){
-                points[i] = {
-                    left: e.touches[i].pageX - self.touchstartStatus.matrix[4] - self.boxOffset.left,
-                    top:  e.touches[i].pageY - self.touchstartStatus.matrix[5] - self.boxOffset.top
-                };
-            }
-
-            // var vector0 = getVector(points[0], self.pinchPrevPoint[0]);
-            // var vector1 = getVector(points[1], self.pinchPrevPoint[1]);
-
-            // console.log(S.JSON.stringify(vector0));
-            // console.log(S.JSON.stringify(vector1));
-
-            
-
-
-
-            var distance_a0tob1 = getTwopointDistance([self.touchstartStatus.points[0], points[1]]);
-
-            var distance_a1tob1 = getTwopointDistance(points);
-
-            var scale_b_0to1 = distance_a0tob1 / self.touchstartStatus.distance;
-            var scale_a_0to1 = distance_a1tob1 / distance_a0tob1;
-
-            var newMatrix0 = self.pinchForOnePointMove(self.touchstartStatus.points[1], points[1], scale_b_0to1, self.touchstartStatus.matrix);
-
-            // console.log(scale_b_0to1, scale_a_0to1)
-            var newMatrix1 = self.pinchForOnePointMove(self.touchstartStatus.points[0], points[0], scale_a_0to1, newMatrix0);
-
-            // newMatrix1[4] -= self.boxOffset.left;
-            // newMatrix1[5] -= self.boxOffset.top;
-
-            self.fire('pinching', {
-                matrix: newMatrix1
-            })
-
-            self.pinchPrevPoint = points;
-
-        }
-        ,handlePinchEnd: function(e){
-            var self = this;
-            if( e.touches && e.touches.length == 0 ){
-                self.touchType = null;
-                $(document).detach('touchmove', self.handlePinching, self);
-                $(document).detach('touchend',  self.handlePinchEnd, self);
-                self.fire('pinch-end');
-            }
-        }
-
-        ,pinchForOnePointMove: function(beginPoint, endPoint, scale, matrix){
-            var self = this;
-
-            var newMatrix = [0,0,0,0,0,0];
-            newMatrix[0] = newMatrix[3] = matrix[0] * scale;
-
-            newMatrix[4] = parseInt( matrix[4] - beginPoint.left * scale + endPoint.left);
-            newMatrix[5] = parseInt( matrix[5] - beginPoint.top  * scale + endPoint.top);
-
-            return newMatrix;
-        }
+    // 保存touchstart transform值
+    ,startTransform: {
+      value: {
+        scale: 1
+        ,offset: {x: 0, y: 0}
+      }
     }
 
-    function getMatrix(el, value){
-        var transformName = '-webkit-transform';
-        if( el.css(transformName) == '' ){
-            transformName = 'transform';
-        }
-        if(el.css(transformName) == ''){
-            return [2.0.0,0,2.0.0,0];
-        }
+    // 移动过程中 缓存动作 偏移值
+    ,offset: {value: {x: 0, y: 0}}
 
-        var matrix = el.css(transformName).match(/matrix\((.*)\)/)[1].split(',');
-        for(var i = 0; i < matrix.length; ++i){
-            matrix[i] = parseFloat(matrix[i]);
-        }
-        return matrix;
+    // 容器box，溢出值
+    ,overflow_d: {value: 0}
+
+    // 保存touchstart point 坐标
+    ,startPoint: {
+      value: {x: 0, y: 0}
     }
 
-    //两点绝对距离  sqrt( x1-x2)^2 + (y1-y2)^2 )
-    function getTwopointDistance(points){
-        var p1 = points[0], p2 = points[1];
-        return Math.sqrt( (p1.left-p2.left)*(p1.left-p2.left) + (p1.top - p2.top)*(p1.top - p2.top) );
+    ,cachedPoints: {
+      value: []
     }
 
-    // function getVector(p1,p2){
-    //     var vector = {
-    //         left: p2.left - p1.left
-    //         ,top: p2.top  - p1.top
-    //     };
+    // 在图片被用户执行pinch操作，并且pinch放大到scale>1的时候，不允许，立即执行切换图片的功能
+    ,__slideActionFreeze__: {
+      value: false
+    }
 
-    //     return vector;
+    ,__must_slide__: {
+      value: false
+    }
+
+    ,__forbidden__: {
+      value: false
+    }
+  }
+
+  var o = {
+    initializer: function(){
+      this._event();
+    }
+
+    ,"stopMoving": function(){
+
+    }
+
+    // ,isForbidden: function(){
+    //   if( this.get('__forbidden__') == true ){
+    //     return true;
+    //   }
+    //   else{
+    //     return false;
+    //   }
     // }
 
-    S.extend(PinchGesture, Base, o);
+    ,_event: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
 
-    return PinchGesture;
-},{
-    requires: ['node', 'base', './pc-mouse']
-});
+      box.delegate('touchstart', elTrigger, this._touchstart, this);
 
-/**
- * 
- * @authors yumen.gk (yumen.gk@taobao.com | g.gaokai@gmail.com)
- * @date    2013-12-09 17:50:42
- * @version 2
- * @desc    唤醒fixed模块时，如果同时唤醒了手机键盘，iphone及其部分android浏览器 fixed 定位会失效，  这里采用监听 touchend事件，还原scroll定位，实现fixed相对位置不变
- * 
- */
+      box.delegate('gesturestart', elTrigger, this._gesturestart, this);
 
-KISSY.add('kg/mobile-album/2.0.0/wakeup-popup/index',function(S, Node, Base){
-    var $ = Node.all;
-
-    function WakeupPopup(config){
-        this.msgPanelHelp = {
-            curScrollTop: 0,
-            timeout: null
-        }
-
-        this.isLive = false;
+      box.delegate('doubleTap', elTrigger, this._doubleTap, this);
     }
 
-    var o = {
-        'wakeup': function(){
-            if( this.isLive == true ){
-                return ;
-            }
-            this.isLive = true;
-            this.wakeupMsgPanel();
-            this.msgPanelTouchend();
-        }
-        ,'sleep': function(){
-            this.isLive = false;
-            this.sleepMsgPanel();
-        }
+    // 初始化状态值 touchstart 时调用
+    ,initStatus: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
 
-        ,wakeupMsgPanel: function(){
-            var self = this;
-            self.msgPanelHelp.curScrollTop = document.body.scrollTop;
-            document.body.scrollTop = 0;
-            $(document).on('touchstart', self.msgPanelTouchstart, self);
-        }
-        ,msgPanelTouchstart: function(){
-            var self = this;
-            $(document).on('touchend', self.msgPanelTouchend, self);
-        }
-        ,msgPanelTouchend: function(){
-            var self = this;
-            self.msgPanelHelp.timeout && clearTimeout(self.msgPanelHelp);
-            self.msgPanelHelp.timeout = setTimeout(function(){
-                document.body.scrollTop = 0;
-            },2.0.0);
-        }
-        ,sleepMsgPanel: function(){
-            var self = this;
-            setTimeout(function(){
-                document.body.scrollTop = self.msgPanelHelp.curScrollTop;
-            }, 2.0.0);
-            $(document).detach('touchstart', self.msgPanelTouchstart, self);
-            $(document).detach('touchend',   self.msgPanelTouchend,   self);
-        }
+      var el = box.one(elTrigger);
+
+      this.set('offset', {x: 0, y: 0});
+
+      this.set('startTransform', el.data('transform') || {scale: 1, offset: {x: 0, y: 0}});
+
+      if( this.get('startTransform').scale <= 1 ){
+        this.set('__must_slide__', true);
+      }
+
+      var img = el;
+      if( el.prop('tagName').toUpperCase() != 'IMG' ){
+        img = el.all('img')
+      }
+      this.set('elOriginSize', {
+        width: img.prop('offsetWidth')
+        ,height: img.prop('offsetHeight')
+      });
+
+      this.set('elOffset', {
+        left: img.prop('offsetLeft')
+        ,top: img.prop('offsetTop')
+      })
+
+      this.set('cachedPoints', []);
+
+      this.set('move_action', '');
     }
 
-    S.extend(WakeupPopup, Base, o);
+    // 保存持久化值
+    ,saveStatus: function(){
+      var startTransform = this.get('startTransform');
+      var offset = this.get('offset');
 
-    return WakeupPopup;
-},{
-    requires: ['node', 'base']
-})
-
-
-/**
- * 
- * @authors yumen.gk(yumen.gk@taobao.com | g.gaokai@gmail.com)
- * @date    2014-1-3 16:55:26
- * @version 3
- * @desc    mobile album || pinch功能适配器
- */
-
-KISSY.add('kg/mobile-album/2.0.0/index',function(S, Base, Gesture, WakeupPopup){
-    var $ = S.all;
-
-    function MAlbum(config){
-        var self = this;
-
-        var config = config || {box: $('#J_PinchBox'), boxWrap: $('#J_PinchBoxWrap')};
-        self.box = config.box;
-        self.boxWrap = config.boxWrap;
-        self.config = config;
-
-        self.albumRange = {
-            width: document.documentElement.clientWidth
-            ,height: document.documentElement.clientHeight
+      this.set('startTransform', {
+        scale: startTransform.scale
+        ,offset: {
+          x: startTransform.offset.x + offset.x
+          ,y: startTransform.offset.y + offset.y
         }
+      });
 
-        self.albumInfo = {
-            data: config.data || []
-            ,idx: config.cIdx || 0
-            ,albumItems: []
-        }
-
-        //focusImg info
-        self.focusItemInfo = {
-            img: null
-            ,overflowRange: {
-                initTop: 0
-                ,initLeft: 0
-            }
-        }
-
-        self.showingBorders = {
-            left: 0
-            ,right: 0
-        }
-
-        self.boxBeginMatrix = new Array(6);
-        self.imgBeginMatrix = new Array(6);
-
-        self.gesture = new Gesture(config);
-
-        self.wakeupPopup = new WakeupPopup();
-
-        self.bindEvent();
+      this.set('offset', {x: 0, y: 0});
     }
 
-    var o = {
-        'hide': function(){
-            var self = this;
-            self.boxWrap.hide();
-            self.box.html('');
-            self.wakeupPopup.sleep();
-        }
-        ,'data': function(data){
-            this.albumInfo.data = data;
-        }
-        ,'init': function(){
-            var self = this;
-            self.boxWrap.show();
-            self.fire('show');
-
-            self.initAlbumPanel();
-            self.wakeupPopup.wakeup();
-        }
-
-        ,'setIndex': function(idx){
-            this.albumInfo.idx = idx;
-        }
-
-        ,initFocusItemInfo: function(){
-            var self = this;
-
-            self.focusItemInfo.img = self.box.all('img').item(self.albumInfo.idx);
-        }
-
-        ,bindEvent: function(){
-            var self = this;
-            //
-            var _timeout = null;
-            var _actionTimeout = null;
-
-            self.gesture.on('pinch-start',function(e){
-                var boxMatrix = getMatrix(self.box);
-                self.gesture.setBoxOffset({
-                    left: boxMatrix[4]
-                    ,top: boxMatrix[5]
-                })
-                self.initFocusItemInfo();
-
-                _timeout && clearTimeout(_timeout);
-                self.box.removeClass('img-slide');
-            }).on('pinching', function(e){
-                var target = self.albumInfo.albumItems[self.albumInfo.idx];
-                var boxMatrix = getMatrix(self.box);
-
-                self.box.removeClass('img-slide');
-                target.css('-webkit-transform', 'matrix( ' + e.matrix.join(',') + ' )');
-            }).on('pinch-end', function(){
-                var target = self.albumInfo.albumItems[self.albumInfo.idx];
-                self.box.addClass('img-slide');
-
-                _timeout && clearTimeout(_timeout);
-                _timeout = setTimeout(function(){
-                    self.box.removeClass('img-slide');
-                }, 500);
-
-                var matrix = getMatrix(target);
-                var boxMatrix = getMatrix(self.box);
-
-                var ret = self.slideToRange2(boxMatrix, matrix);
-
-                target.css('-webkit-transform', 'matrix( ' + ret.matrix.join(',') + ')');
-                self.box.css('-webkit-transform', 'matrix(' + ret.boxMatrix.join(',') + ')');
-
-                setTimeout(function(){
-                    self.gesture.fire('dd-end', {
-                        noReplace: true
-                    });
-                }, 500 + 2.0.0);
-                console.log('pinch-end')
-            })
-
-            //
-            self.gesture.on('dd-start', function(e){
-                self.initFocusItemInfo();
-                self.boxBeginMatrix = getMatrix(self.box);
-                self.imgBeginMatrix = e.matrix;
-                self.box.removeClass('anim').removeClass('img-slide');
-            }).on('dding', function(e){
-                var target = self.albumInfo.albumItems[self.albumInfo.idx];
-
-                var matrix = getMatrix(target);
-                var boxMatrix = getMatrix(self.box);
-
-                //x 轴运动
-                if( (self.albumInfo.idx == 0 && e.d.left > 0) 
-                    || self.albumInfo.idx == self.albumInfo.albumItems.length - 1 && e.d.left < 0 ){
-                    boxMatrix[4] = self.boxBeginMatrix[4] + e.d.left / 2;
-                }
-                else{
-                    boxMatrix[4] = self.boxBeginMatrix[4] + e.d.left;
-                }
-
-                //y轴运动
-                if( matrix[0] > 1 ){
-                    matrix[5] = self.imgBeginMatrix[5] + e.d.top;
-                }
-
-                self.box.css('-webkit-transform', 'matrix( ' + boxMatrix.join(',') + ' )');
-                target.css('-webkit-transform', 'matrix(' + matrix.join(',') + ')');
-            }).on('dd-end', function(e){
-                self.box.addClass('anim').addClass('img-slide');
-                _timeout = setTimeout(function(){
-                    self.box.removeClass('anim').removeClass('img-slide');
-                }, 500);
-
-                var target = self.albumInfo.albumItems[self.albumInfo.idx];
-
-                var matrix = getMatrix(target);
-                var boxMatrix = getMatrix(self.box);
-
-                var d_4 = boxMatrix[4] - self.boxBeginMatrix[4];
-
-                if( e.noReplace === true ){
-                    ;
-                }
-                else if( self.needReplaceShowingImg(d_4, matrix) ){
-                    return ;
-                }
-                var ret = self.slideToRange(boxMatrix, matrix);
-
-                target.css('-webkit-transform', 'matrix(' + ret.matrix.join(',') + ')');
-                self.box.css('-webkit-transform', 'matrix(' + ret.boxMatrix.join(',') +')');
-                console.log('dd-end')
-            })
-
-            $(document).on('dd-mouse d_wheel', function(e){
-                self.target = self.box.all('img').item(self.albumInfo.idx);
-                self.target.css('-webkit-transition', 'none');
-                self.target.css('-webkit-transform', 'matrix( ' + e.matrix.join(',') + ' )');
-                // self.offsetWaitingImg(e.matrix);
-            })
-        }
-
-        ,initAlbumPanel: function(){
-            var self = this;
-            
-            self.setTrigger();
-
-            //render all album images with mini size
-            self.renderImages();
-
-            self.gesture.config.listIdx = self.albumInfo.idx;
-        }
-        ,setTrigger: function(){
-            var self = this;
-            //init triggers
-            if( self.albumInfo.data.length > 1 ){
-                self.boxWrap.one('.J_SlidePinchTrigger').html(new Array(self.albumInfo.data.length + 1).join('*').replace(/\*/g, '<li></li>'));
-                
-                self.boxWrap.one('.J_SlidePinchTrigger').children('li').item(self.albumInfo.idx).addClass('current');
-            }
-            else{
-                self.boxWrap.one('.J_SlidePinchTrigger').html('');
-            }
-        }
-        ,renderImages: function(){
-            var self = this;
-            var data = self.albumInfo.data;
-            var idx = self.albumInfo.idx;
-            self.albumInfo.albumItems = [];
-            for(var i = 0; i < data.length; ++i){
-                var albumItem = $('<img src="' + data[i].miniSrc + '"/>');
-
-                self.albumInfo.albumItems.push(albumItem);
-
-                self.box.append(albumItem);
-
-                self.imageAdapterRange(i, albumItem, false);
-
-                if( i == self.albumInfo.idx ){
-                    self.imageAdapterRange(i, albumItem, true);
-                }
-            }
-
-            var boxMatrix = [2.0.0,0,2.0.0,0];
-            boxMatrix[4] = 0 - idx * self.albumRange.width * 1.2;
-            self.box.css('-webkit-transform', 'matrix(' + boxMatrix.join(',') + ')');
-        }
-
-        //根据领域偏移  设置非活跃图片的偏移
-        ,offsetAlbumImages: function(){
-            var self = this;
-            var data = self.albumInfo.data;
-            var idx =  self.albumInfo.idx;
-
-            for(var i = 0; i < data.length; ++i){
-                if( i != idx){
-                    self.imageAdapterRange(i, self.albumInfo.albumItems[i], false);
-                }
-                else{
-                    self.imageAdapterRange(i, self.albumInfo.albumItems[i], true);
-                }
-            }
-        }
-
-        //=== common
-        ,imageAdapterRange: function(index, albumItem, afterOnload){
-            var self = this;
-            var data = self.albumInfo.data;
-
-            if( afterOnload === true && albumItem.attr('data-origin-loaded') !== 'true' ){
-                var imgObj = new Image();
-                
-                imgObj.onload = function(){
-                    albumItem.attr('src', data[index].originSrc).attr('data-origin-loaded', 'true');
-                    setTimeout(function(){
-                        self.resetImagePosition({
-                            width: albumItem.prop('offsetWidth')
-                            ,height: albumItem.prop('offsetHeight')
-                        }, albumItem, index);
-                    }, 500 + 2.0.0);
-                }
-                imgObj.src = data[index].originSrc;
-            }
-            self.resetImagePosition({
-                width: data[index].size.width
-                ,height: data[index].size.height
-            }, albumItem, index);
-
-        }
-
-        ,resetImagePosition: function(size, albumItem, index){
-            var self = this;
-
-            
-            var matrix = [2.0.0,0,2.0.0,0];
-            matrix[4] = self.albumRange.width * index * 1.2;
-
-            var width = '', height = '', left = 0, top = 0;
-            if( size.width / size.height >= self.albumRange.width / self.albumRange.height ){
-                width = '2.0.0%';
-                top = ( self.albumRange.height - size.height * self.albumRange.width / size.width ) / 2;
-            }
-            else{
-                height = '2.0.0%';
-                left = ( self.albumRange.width - size.width * self.albumRange.height / size.height ) / 2;
-            }
-
-            //领域扩张 偏移判断
-            if( index < self.albumInfo.idx ){
-                matrix[4] += left - Math.abs(self.showingBorders.left);
-            }
-            else if( index > self.albumInfo.idx ){
-                matrix[4] += left + Math.abs(self.showingBorders.right);
-            }
-            else{
-                matrix[4] += left;
-            }
-
-            if( self.showingBorders.left != 0 || self.showingBorders.right != 0 ){
-                var boxMatrix = getMatrix(self.box);
-                matrix[4] += 0 - boxMatrix[4] - self.albumRange.width * self.albumInfo.idx * 1.2;
-            }
-            matrix[5] += top;
-
-            albumItem.css('width', width).css('height', height).css('-webkit-transform', 'matrix(' + matrix.join(',') + ')');
-
-            self.albumInfo.data[index].coo = {
-                left: left
-                ,top: top
-            }
-
-            self.albumInfo.data[index].size = size;
-
-            self.albumInfo.data[index].initPos = {
-                left: left
-                ,top: top
-            }
-        }
-
-        //back
-        
-        ,needReplaceShowingImg: function(d_4, matrix){
-            var self = this;
-            if( self.albumInfo.albumItems.length <= 1 ){
-                return false;
-            }
-
-            var docw = self.albumRange.width;
-
-            if( Math.abs(d_4) < docw / 2){
-                return false;
-            }
-
-            var offsetLeft = self.albumRange.width * 1.2 * self.albumInfo.idx;
-
-            var target =    self.albumInfo.albumItems[self.albumInfo.idx];
-            var targetData = self.albumInfo.data[self.albumInfo.idx];
-            var boxMatrix = getMatrix(self.box);
-            var matrix_4 =  boxMatrix[4] + offsetLeft;
-            var size =   self.albumInfo.data[self.albumInfo.idx].size;
-            // console.log(targetData.size.width * matrix[0] + boxMatrix[4] - matrix[4])
-            // var img = target[0];
-            if( matrix_4 - self.showingBorders.left  >= docw / 2 ){
-                // console.log('prev');
-                if( self.albumInfo.idx - 1 < 0 ){
-                    return false;
-                }
-                self._prev();
-                return true;
-            }
-            // else if( 0 - matrix_4 - self.showingBorders.right - targetData.initPos.left + docw - size.width*matrix[0] / 2 >= docw / 2  ){
-            else if( targetData.size.width * matrix[0] + matrix[4] + boxMatrix[4] - 2 * offsetLeft <= docw / 2  ){
-                if( self.albumInfo.idx + 1 >= self.albumInfo.data.length ){
-                    return false;
-                }
-                self._next();
-                return true;
-            }
-            return false;
-        }
-
-        ,_prev: function(){
-            var self = this;
-            --self.albumInfo.idx;
-            if( self.albumInfo.idx < 0 ){
-                self.albumInfo.idx = self.albumInfo.data.length - 1;
-            }
-
-            var boxMatrix = [2.0.0,0,2.0.0,0];
-            boxMatrix[4] = 0 - self.albumInfo.idx * self.albumRange.width * 1.2;
-            self.box.css('-webkit-transform', 'matrix(' + boxMatrix.join(',') + ')');
-
-            // self.imageAdapterRange(self.albumInfo.idx, self.albumInfo.albumItems[self.albumInfo.idx], true);
-            self.setTrigger();
-            self.gesture.config.listIdx = self.albumInfo.idx;
-
-            self.devideBorders({left: 0, right: 0});
-
-
-        }
-        ,_next: function(){
-            var self = this;
-            ++self.albumInfo.idx;
-            if( self.albumInfo.idx >= self.albumInfo.data.length ){
-                self.albumInfo.idx = 0;
-            }
-
-            var boxMatrix = [2.0.0,0,2.0.0,0];
-            boxMatrix[4] = 0 - self.albumInfo.idx * self.albumRange.width * 1.2;
-            self.box.css('-webkit-transform', 'matrix(' + boxMatrix.join(',') + ')');
-            
-            // self.imageAdapterRange(self.albumInfo.idx, self.albumInfo.albumItems[self.albumInfo.idx], true);
-            self.setTrigger();
-            self.gesture.config.listIdx = self.albumInfo.idx;
-
-            self.devideBorders({left: 0, right: 0});
-        }
-
-        //for dd only control box position
-        ,slideToRange: function(boxMatrix, matrix){
-            var self = this;
-            var target = self.albumInfo.albumItems[self.albumInfo.idx];
-            var targetData  = self.albumInfo.data[self.albumInfo.idx];
-
-            var offsetLeft = self.albumRange.width * self.albumInfo.idx * 1.2;
-
-            //x 轴 弹回
-            if( targetData.size.width * matrix[0] <= self.albumRange.width){
-                boxMatrix[4] = 0 - self.albumInfo.idx * self.albumRange.width * 1.2;
-                matrix[0] = matrix[3] = 1;
-                matrix[4] = offsetLeft + targetData.coo.left;
-                matrix[5] = targetData.coo.top;
-            }
-            else{
-                //左 内溢出
-                if( matrix[4] + boxMatrix[4] > 0 ){
-                    boxMatrix[4] = 0 - matrix[4];
-                }
-                //右 内溢出
-                else if( targetData.size.width * matrix[0] + matrix[4] + boxMatrix[4] < self.albumRange.width ){
-                    // boxMatrix[4] = 0;
-                    boxMatrix[4] = self.albumRange.width - targetData.size.width * matrix[0] - matrix[4];
-                    // matrix[4] = offsetLeft - targetData.size.width * matrix[0] + self.albumRange.width;
-                }
-            }
-
-            //y轴 弹回
-            if( targetData.size.height * matrix[0] <= self.albumRange.height ){
-                matrix[5] = (self.albumRange.height - targetData.size.height * matrix[0]) / 2;
-                
-            }
-            else{
-                //上 内溢出
-                if( matrix[5] > 0 ){
-                    matrix[5] = 0;
-                }
-                //下 内溢出
-                else if( matrix[5] < self.albumRange.height - targetData.size.height * matrix[0] ){
-                    matrix[5] = self.albumRange.height - targetData.size.height * matrix[0];
-                }
-            }
-
-            return {
-                boxMatrix: boxMatrix
-                ,matrix: matrix
-            };
-        }
-
-        //for pinch 注意起始状态 box 偏移 不一定在标线上
-        ,slideToRange2: function(boxMatrix, matrix){
-            var self = this;
-            var target = self.albumInfo.albumItems[self.albumInfo.idx];
-            var targetData  = self.albumInfo.data[self.albumInfo.idx];
-
-            var offsetLeft = self.albumRange.width * self.albumInfo.idx * 1.2
-
-            var borders = {left: 0, right: 0};
-
-            if( matrix[0] < 1 ){
-                matrix[0] = matrix[3] = 1;
-                matrix[4] = offsetLeft + targetData.coo.left;
-                matrix[5] = targetData.coo.top;
-                // boxMatrix[4] = 0 - self.albumInfo.idx * self.albumRange.width * 1.2;
-
-            }
-            else if(matrix[0] * targetData.size.width <= self.albumRange.width){
-                //居中
-                matrix[4] = 0 - (matrix[0]-1) * targetData.size.width  / 2 + offsetLeft + targetData.coo.left;
-            }
-            else if(matrix[0] * targetData.size.width > self.albumRange.width){
-                //左 内溢出
-                if( matrix[4] + boxMatrix[4] > 0 ){
-                    matrix[4] = 0 - boxMatrix[4];
-                    // boxMatrix[4] = 0 - offsetLeft;
-                    //右领域扩张
-                    // borders = {
-                    //     left: 0
-                    //     ,right: matrix[0] * targetData.size.width - self.albumRange.width
-                    // };
-                }
-                //右 内溢出
-                else if( matrix[4] + boxMatrix[4] < self.albumRange.width - targetData.size.width * matrix[0]  ){
-                    // boxMatrix[4] = offsetLeft;
-                    matrix[4] = self.albumRange.width - targetData.size.width * matrix[0] - boxMatrix[4];
-                    // matrix[4] = offsetLeft + self.albumRange.width - targetData.size.width * matrix[0];
-                    //左领域扩张
-                    // borders = {
-                    //     left: matrix[0] * targetData.size.width - self.albumRange.width
-                    //     ,right: 0
-                    // };
-                }
-                borders = {
-                    left: Math.abs(matrix[4] + boxMatrix[4])
-                    ,right: Math.abs(matrix[0] * targetData.size.width - self.albumRange.width - Math.abs(boxMatrix[4] + matrix[4]) )
-                    // ,right: Math.abs(matrix[0] * targetData.size.width - self.albumRange.width - boxMatrix[4] + matrix[4])
-                };
-            }
-
-            self.devideBorders(borders);
-
-            return {
-                boxMatrix: boxMatrix
-                ,matrix:   matrix
-            };
-        }
-
-        ,devideBorders: function(borders){
-            var self = this;
-            self.showingBorders = borders;
-
-            self.offsetAlbumImages();
-        }
+    ,_doubleTap: function(e){
+
+      // if( this.isForbidden() ){
+      //   return ;
+      // }
+
+      var point = Tools.getTouchPoint([e.touch]);
+      if( this.get('startTransform').scale != 1  ){
+        this.set('startTransform', {
+          scale: 1
+          ,offset: {
+            x: 0
+            ,y: 0
+          }
+        })
+      }
+      else{
+        var transform = Tools.setScaleByOrigin(3, this.get('startTransform'), point);
+        this.set('startTransform', transform);
+      }
+
+      this.update(300);
     }
 
-    function getMatrix(el, value){
-        var transformName = '-webkit-transform';
-        if( el.css(transformName) == '' ){
-            transformName = 'transform';
-        }
-        if(el.css(transformName) == ''){
-            return [2.0.0,0,2.0.0,0];
-        }
-
-        var matrix = el.css(transformName).match(/matrix\((.*)\)/)[1].split(',');
-        for(var i = 0; i < matrix.length; ++i){
-            matrix[i] = parseFloat(matrix[i]);
-        }
-        return matrix;
+    ,_gesturestart: function(){
+      this._touchend({
+        freeze: true
+      });
     }
 
-    S.extend( MAlbum, Base, o);
+    ,_touchstart: function(e){
+      // if( this.isForbidden() ){
+      //   return ;
+      // }
 
-    return MAlbum;
+      if( e.touches.length > 1 ){
+        return ;
+      }
+
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      var point = Tools.getTouchPoint(e.touches);
+      this.set('startPoint', point);
+
+      // init status
+      this.initStatus();
+      box.undelegate('touchmove', elTrigger, this._touchmove, this);
+      box.undelegate('touchend', elTrigger, this._touchend, this);
+
+      box.delegate('touchmove', elTrigger, this._touchmove, this);
+      box.delegate('touchend', elTrigger, this._touchend, this);
+
+      // 增加动画效果
+      el.removeClass('transition_back');
+      el.addClass('transition_move');
+    }
+
+    ,_touchmove: function(e){
+      // if( this.isForbidden() ){
+      //   return ;
+      // }
+      if( e.touches.length > 1 ){
+        this._touchend({
+          freeze: true
+        });
+        return ;
+      }
+
+      var startPoint = this.get('startPoint');
+      var point = Tools.getTouchPoint(e.touches);
+
+
+      point = this._rectifyCoo(point);
+
+      this._cachePoints(point);
+      
+
+      var offset = Tools.getOffsetOnTwoPoints(startPoint, point);
+
+      var overflow_offset = Tools.getBoxOffsetIfOverflow(this.get('startTransform'), this.get('elOriginSize'), offset);
+
+      if( this.get('startTransform').scale > 1 && this.get('__must_slide__') == false ){
+        overflow_offset.x = overflow_offset.x / 4;
+        offset.x = offset.x - overflow_offset.x * 4;
+      }
+      else{
+        offset.x = offset.x - overflow_offset.x;
+      }
+
+      // offset.y = offset.y - overflow_offset.y;
+
+      this.set('overflow_d', overflow_offset.x);
+
+
+      this.set('offset', offset);
+      this.update(0);
+    }
+
+    // 矫正 坐标
+    ,_rectifyCoo: function(point){
+      if( this.get('startTransform').scale > 1 ){
+        return point;
+      }
+
+      var cachedPoints = this.get('cachedPoints');
+      cachedPoints.push(point);
+      var ret = Tools.getRectifiedCoo(cachedPoints, this.get('move_action'))
+      point = ret.point;
+      this.set('move_action', ret.action)
+      cachedPoints.pop();
+
+      return point;
+    }
+
+    ,_touchend: function(e){
+      // if( this.isForbidden() ){
+      //   return ;
+      // }
+      if(e && e.touches && e.touches.length > 0 ){
+        return ;
+      }
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+
+      var el = box.one(elTrigger);
+
+      this.saveStatus();
+
+      if( e.freeze === true ){
+        // do nothing
+      }
+      else{
+        var transform = Tools.setCloseTo_slideline(el, this.get('elOriginSize'), this.get('elOffset'), this.get('startTransform'));
+        this._needSlide(transform);
+        this.set('startTransform', transform);
+        this.update(300);
+      }
+      if( this.get('overflow_d') != 0 ){
+        this.set('overflow_d', 0);
+
+        if( e.freeze === true ){
+          this.update();
+        }
+        else{
+          this.update(300);
+        }
+      }
+
+      box.undelegate('touchmove', elTrigger, this._touchmove, this);
+      box.undelegate('touchend', elTrigger, this._touchend, this);
+
+      // 去除动画效果
+      el.removeClass('transition_move');
+    }
+
+    ,_needSlide: function(transform){
+      var cachedPoints = this.get('cachedPoints');
+      if( cachedPoints.length == COUNT_POINTS ){
+        cachedPoints[cachedPoints.length - 1].t = +new Date();
+        var slideAction = Tools.getSlideAction(cachedPoints, COUNT_POINTS, {
+          x: this.get('overflow_d')
+        }, transform);
+
+        if(slideAction != ''){
+          if( this.get('__must_slide__') == true ){
+            this.set('__must_slide__', false);
+            this.fire('slide-' + slideAction);
+          }
+          else{
+            this.set('__must_slide__', true);
+          }
+        }
+      }
+    }
+
+    ,_cachePoints: function(point){
+      if(!point.t){
+        point.t = +new Date();
+      }
+
+      var cachedPoints = this.get('cachedPoints');
+      cachedPoints.push(point);
+
+      if( cachedPoints.length > COUNT_POINTS ){
+        cachedPoints = cachedPoints.splice( cachedPoints.length - COUNT_POINTS );
+      }
+
+      this.set('cachedPoints', cachedPoints);
+    }
+
+    // update el css style
+    ,update: function(timer){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      var offset = this.get('offset');
+      var startTransform = this.get('startTransform');
+
+      var currTransform = {
+        scale: startTransform.scale
+        ,offset: {
+          x: startTransform.offset.x + offset.x
+          ,y: startTransform.offset.y + offset.y
+        }
+      }
+
+      Tools.setTransform(el, currTransform, timer);
+
+      var slide_left = box.data('slide_left') || 0;
+
+      if(timer){
+        timer = 500;
+  
+        box.css('left', (slide_left + this.get('overflow_d') ) + 'px');
+
+        box.addClass('transition_back');
+        setTimeout(function(){
+          box.removeClass('transition_back');
+        }, timer);
+      }
+      else{
+        box.removeClass('transition_back');
+        box.css('left', (slide_left + this.get('overflow_d') ) + 'px');
+      }
+    }
+  }
+
+  S.extend(OneFinger, Base, o, {
+    ATTRS: ATTRS
+  });
+
+  return OneFinger;
 }, {
-    requires: ['base', './core/gesture', './wakeup-popup/index', './assets/mobile-album.css']
+  requires: ['base', 'node', './tools']
+});
+/**
+  * yumen.gk 2014-10-27 20:45
+  * 双点跟随
+  */
+
+KISSY.add('kg/mobile-album/3.0.0/twofinger',function(S, Base, UA, Node, Tools){
+  var $ = Node.all;
+
+  function Fingers(cfg){
+    Fingers.superclass.constructor.call(this, cfg);
+  }
+
+  var ATTRS = {
+    box: {value: null}
+    ,elTrigger: {value: ''}
+    ,elOriginSize: {
+      value: {width: 0, height: 0}
+    }
+
+    ,maxScale: {value: 3}
+
+    ,clientWidth: {value: 0}
+    ,clientHeight: {value: 0}
+    ,elOffset: {
+      value: {
+        x: 0
+        ,y: 0
+      }
+    }
+    ,startPoint: {
+      value: [{x:0, y:0}, {x:0, y:0}]
+    }
+
+    ,cacheTransform: {
+      value: {scale: 1, offset: {x: 0, y: 0}}
+    }
+    ,prevTransform: {
+      value: {scale: 1, offset: {x: 0, y: 0}}
+    }
+  }
+
+  var o = {
+    initializer: function(){
+      this._event();
+    }
+
+    ,_event: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+
+      box.delegate('gesturestart', elTrigger, this._gesturestart, this);
+
+      box.delegate('touchstart', elTrigger, this._touchstart, this);
+      box.delegate('touchmove', elTrigger, this._touchmove, this);
+      box.delegate('touchend', elTrigger, this._toucheend, this);
+    }
+
+    ,_prepare: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      var img = el;
+      if( el.prop('tagName').toUpperCase() != 'IMG' ){
+        img = el.all('img');
+      }
+      this.set('elOriginSize', {
+        width: img.prop('offsetWidth')
+        ,height: img.prop('offsetHeight')
+        ,offset: {
+          x: 0
+          ,y: 0
+        }
+      });
+      this.set('elOffset', {
+        left: img.prop('offsetLeft')
+        ,top: img.prop('offsetTop')
+      })
+
+      this.set('clientWidth', document.documentElement.clientWidth);
+      this.set('clientHeight', document.documentElement.clientHeight);
+
+      this.set('cacheTransform', el.data('transform') || {scale: 1, offset: {x: 0, y: 0}});
+      this.set('prevTransform', el.data('transform') || {scale: 1, offset: {x: 0, y: 0}});
+    }
+
+    ,_gesturestart: function(e){
+      var box = this.get('box')
+      elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      this._prepare();
+      box.delegate('gesturechange', elTrigger, this._gesturechange, this);
+      box.delegate('gestureend', elTrigger, this._gestureend, this);
+
+      // 添加品尝动画效果
+      el.removeClass('transition_back');
+      el.addClass('transition_pinch');
+    }
+    ,_gesturechange: function(e){
+    }
+    ,_gestureend: function(e){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      // slideTo_slideline
+      var transform = Tools.setCloseTo_slideline(el, this.get('elOriginSize'), this.get('elOffset'), this.get('prevTransform'));
+      
+      this.set('cacheTransform', this.get('prevTransform'));
+      this.set('prevTransform', transform);
+      this.update(300);
+
+      box.undelegate('gesturechange', elTrigger, this._gesturechange, this);
+      box.undelegate('gestureend', elTrigger, this._gestureend, this);
+
+      // 去除pinch动画效果
+      el.removeClass('transition_pinch');
+    }
+
+    ,_touchstart: function(e){
+      if( e.touches.length != 2 ){
+        return ;
+      }
+      if( UA.mobile != 'apple' ){
+        this._gesturestart();
+      }
+
+      var currPoint = [{
+        x: e.touches[0].clientX
+        ,y: e.touches[0].clientY
+      }, {
+        x: e.touches[1].clientX
+        ,y: e.touches[1].clientY
+      }];
+
+      this.set('startPoint', currPoint);
+
+
+    }
+    ,_touchmove: function(e){
+      if( e.touches.length != 2 ){
+        return ;
+      }
+      var currPoint = [{
+        x: e.touches[0].clientX
+        ,y: e.touches[0].clientY
+      }, {
+        x: e.touches[1].clientX
+        ,y: e.touches[1].clientY
+      }];
+
+      var start_centerPoint = getCenterPoint(this.get('startPoint'));
+      var curr_centerPoint = getCenterPoint(currPoint);
+
+      var offset = {
+        x: curr_centerPoint.x - start_centerPoint.x
+        ,y: curr_centerPoint.y - start_centerPoint.y
+      };
+
+      var scale = distance_twopoints(currPoint) / distance_twopoints(this.get('startPoint'))
+      ,point = start_centerPoint
+      ,offset = offset;
+      var prevTransform = this.get('prevTransform');
+
+      prevTransform = Tools.setScaleByOrigin(scale, prevTransform, point);
+
+      prevTransform.offset = {
+        x: prevTransform.offset.x + offset.x
+        ,y: prevTransform.offset.y + offset.y
+      }
+
+      this.set('cacheTransform', this.get('prevTransform'));
+      this.set('prevTransform', prevTransform);
+
+      this.set('startPoint', currPoint);
+
+      this.update();
+    }
+    ,_toucheend: function(e){
+      if(UA.mobile != 'apple'){
+        this._gestureend();
+      }
+    }
+
+    ,update: function(timer){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      var prevTransform = this.get('prevTransform');
+      if( prevTransform.scale >= this.get('maxScale') ){
+          prevTransform = this.get('cacheTransform');
+          this.set('prevTransform', this.get('cacheTransform'));
+      }
+
+      Tools.setTransform(el, prevTransform, timer, 'pinch');
+
+      el.data('tranform', prevTransform);
+    }
+  };
+
+  function getCenterPoint(points){
+    return {
+      x: (points[1].x + points[0].x) / 2
+      ,y: (points[1].y + points[0].y) / 2
+    }
+  }
+
+  function distance_twopoints(points){
+    return Math.abs( (points[1].x - points[0].x) * (points[1].x - points[0].x) + (points[1].y - points[0].y) * (points[1].y - points[0].y) );
+  }
+
+  function calculatePinch(point, scale){
+
+  }
+
+  S.extend(Fingers, Base, o, {
+    ATTRS: ATTRS
+  });
+
+  return Fingers;
+}, {
+  requires: ['base', 'ua', 'node', './tools']
 })
+/**
+  * 是否可切换图片
+  */
+
+KISSY.add('kg/mobile-album/3.0.0/slide',function(S, Base, Node){
+  var $ = Node.all;
+
+  function Slide(cfg){
+    Slide.superclass.constructor.call(this, cfg);
+  }
+
+  var ATTRS = {
+    box: {value: null}
+
+    ,elTrigger: {value: ''}
+
+    ,slide_left: {value: '0'}
+  }
+
+  var o = {
+    initializer: function(){
+
+    }
+
+    ,"run": function(points, overflow){
+      if( !points || points.length <= 1 ){
+        return false;
+      }
+
+      var clientWidth = document.documentElement.clientWidth;
+      var clientHeight = document.documentElement.clientHeight;
+
+      var len = points.length;
+      var dt = points[len-1].t - points[0].t;
+
+      if( Math.abs(overflow.x) >  clientWidth / 2){
+        if( overflow.x < 0 ){
+          this.slide_next();
+        }
+        else{
+          this.slide_prev();
+        }
+      }
+
+      if( dt < 500 ){
+
+      }
+    }
+
+    ,slide: function(){
+
+    }
+    ,slide_prev: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      if( this.hasPrev(el) ){
+        var slide_left = this.get('slide_left');
+        var clientWidth = document.documentElement.clientWidth;
+
+        slide_left += clientWidth + 10;
+        box.css('left', slide_left);
+        box.data('slide_left', slide_left);
+
+        this.set('slide_left', slide_left);
+        this.switchToPrev();
+      }
+      else{
+        return false;
+      }
+
+    }
+    ,slide_next: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      if( this.hasNext(el) ){
+        var slide_left = this.get('slide_left');
+        var clientWidth = document.documentElement.clientWidth;
+
+        slide_left -= clientWidth + 10;
+        box.css('left', slide_left);
+        box.data('slide_left', slide_left);
+
+        this.set('slide_left', slide_left);
+        this.switchToNext();
+      }
+      else{
+        return false;
+      }
+
+    }
+
+    ,hasPrev: function(el){
+      if( el.prev() && el.prev().length > 0 ){
+        return true;
+      }
+      return false;
+    }
+    ,hasNext: function(el){
+      if( el.next() && el.next().length > 0 ){
+        return true;
+      }
+      return false;
+    }
+    
+    ,switchTo: function(index){
+
+    }
+
+    ,switchToPrev: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      var prev = el.prev();
+
+      el.removeClass(elTrigger);
+
+      setTimeout(function(){
+        prev.addClass(elTrigger);
+        prev.css('-webkit-transform-origin', '0 0');
+      }, 300);
+
+      this.initStyle(el);
+    }
+    ,switchToNext: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+      var el = box.one(elTrigger);
+
+      var next = el.next();
+
+      el.removeClass(elTrigger);
+
+      setTimeout(function(){
+        next.addClass(elTrigger);
+        next.css('-webkit-transform-origin', '0 0');
+      }, 300)
+
+      this.initStyle(el);
+    }
+
+    ,initStyle: function(el){
+      setTimeout(function(){
+        el.css('-webkit-transform', 'translate(0,0) scale(1)');
+        el.data('transform', {
+          scale: 1
+          ,offset: {x: 0, y: 0}
+        })
+      }, 300)
+    }
+
+  }
+
+  S.extend(Slide, Base, o, {
+    ATTRS: ATTRS
+  });
+
+  return Slide;
+}, {
+  requires: ['base', 'node']
+})
+/**
+  * 无线相册
+  *  2014年逆向交易，第二版
+  */
+
+KISSY.add('kg/mobile-album/3.0.0/album',function(S, Base, Node, OneFinger, TwoFinger, Slide){
+  var $ = Node.all;
+
+  function MA(cfg){
+    MA.superclass.constructor.call(this, cfg);
+  }
+
+  var ATTRS = {
+    box: {
+      value: null, 
+      getter: function(v){
+        return $(v);
+      }
+      ,setter: function(v){
+        return $(v);
+      }
+    }
+    ,elTrigger: {value: '.J_AlbumSlideItem'}
+    ,J_AlbumSlideItem: {value: ''}
+  };
+  var o = {
+    initializer: function(){
+      this.prepareStyle();
+
+      var onefinger = new OneFinger({
+        box: this.get('box')
+        ,elTrigger: this.get('elTrigger')
+      });
+
+      var towfinger = null;
+
+      var slide = new Slide({
+        box: this.get('box')
+        ,elTrigger: this.get('elTrigger')
+      });
+
+
+      onefinger.on('slide-prev', function(e){
+        slide.slide_prev();
+      }).on('slide-next', function(e){
+        slide.slide_next();
+      });
+
+      var twofinger = new TwoFinger({
+        box: this.get('box')
+        ,elTrigger: this.get('elTrigger')
+        ,maxScale: 3
+      })
+
+      // twofinger.on('start', function(){
+      //   onefinger.set('__forbidden__', true);
+      // }).on('end', function(){
+      //   onefinger.set('__forbidden__', false);
+      // })
+
+
+      this.set('onefinger', onefinger);
+      this.set('slide', slide);
+
+      this._event();
+    }
+
+    ,_event: function(){
+      var self = this;
+      var box = self.get('box');
+
+      function haltEvent(e){
+        e.halt();
+      }
+
+      $(document).on('touchstart', haltEvent);
+      box.on('singleTap', function(){
+        $(document).detach('touchstart', haltEvent);
+        self.fire('close');
+      });
+      
+    }
+
+    // after resize or 翻转屏幕
+    ,prepareStyle: function(){
+      var box = this.get('box')
+      ,elTrigger = this.get('elTrigger');
+
+      box.children().item(0).addClass(elTrigger);
+      
+      var el = box.all(elTrigger);
+
+      el.css('-webkit-transform-origin', '0 0')
+    }
+  };
+
+  S.extend(MA, Base, o, {
+    ATTRS: ATTRS
+  });
+
+  return MA;
+}, {
+  requires: ['base', 'node', './onefinger', './twofinger', './slide']
+})
+/** Compiled By kissy-xtemplate */
+KISSY.add('kg/mobile-album/3.0.0/album-xtpl',function (S, require, exports, module) {
+        /*jshint quotmark:false, loopfunc:true, indent:false, asi:true, unused:false, boss:true*/
+        return function (scope, S, undefined) {
+            var buffer = "",
+                config = this.config,
+                engine = this,
+                moduleWrap, utils = config.utils;
+            if (typeof module !== "undefined" && module.kissy) {
+                moduleWrap = module;
+            }
+            var runBlockCommandUtil = utils.runBlockCommand,
+                renderOutputUtil = utils.renderOutput,
+                getPropertyUtil = utils.getProperty,
+                runInlineCommandUtil = utils.runInlineCommand,
+                getPropertyOrRunCommandUtil = utils.getPropertyOrRunCommand;
+            buffer += '<div class="album-m">\n    <div id="J_AlbumMBox" class="album-m-slide">\n      ';
+            var config0 = {};
+            var params1 = [];
+            var id2 = getPropertyUtil(engine, scope, "data", 0, 3);
+            params1.push(id2);
+            var id3 = getPropertyUtil(engine, scope, "xindex", 0, 3);
+            params1.push(id3);
+            config0.params = params1;
+            config0.fn = function (scope) {
+                var buffer = "";
+                buffer += '\n      <div class="album-m-slide-item">\n        <div class="album-m-imgbox">\n          <div class="J_PinchBox pinch-box">\n              <img src="';
+                var id4 = getPropertyOrRunCommandUtil(engine, scope, {}, "src", 0, 7);
+                buffer += renderOutputUtil(id4, true);
+                buffer += '" data-originSrc="';
+                var id5 = getPropertyOrRunCommandUtil(engine, scope, {}, "originSrc", 0, 7);
+                buffer += renderOutputUtil(id5, true);
+                buffer += '">\n          </div>\n          <div class="counter">\n            <ul>\n              ';
+                var config6 = {};
+                var params7 = [];
+                var id8 = getPropertyUtil(engine, scope, "data", 0, 11);
+                params7.push(id8);
+                var id9 = getPropertyUtil(engine, scope, "xindex", 0, 11);
+                params7.push(id9);
+                config6.params = params7;
+                config6.fn = function (scope) {
+                    var buffer = "";
+                    buffer += '\n                <li ';
+                    var config10 = {};
+                    var params11 = [];
+                    var id12 = getPropertyUtil(engine, scope, "xindex", 0, 12);
+                    var id13 = getPropertyUtil(engine, scope, "xindex", 1, 12);
+                    params11.push(id12 === id13);
+                    config10.params = params11;
+                    config10.fn = function (scope) {
+                        var buffer = "";
+                        buffer += 'class="current"';
+                        return buffer;
+                    };
+                    buffer += runBlockCommandUtil(engine, scope, config10, "if", 12);
+                    buffer += '></li>\n              ';
+                    return buffer;
+                };
+                buffer += runBlockCommandUtil(engine, scope, config6, "each", 11);
+                buffer += '\n            </ul>\n          </div>\n        </div>\n      </div>\n      ';
+                return buffer;
+            };
+            buffer += runBlockCommandUtil(engine, scope, config0, "each", 3);
+            buffer += '\n    </div>\n</div>';
+            return buffer;
+        };
+});
+/**
+  * 无线相册
+  *  2014年逆向交易，第二版
+  */
+
+KISSY.add('kg/mobile-album/3.0.0/index',function(S, Base, Node, XT, Album, AlbumXtpl){
+  var $ = Node.all;
+
+  function A(cfg){
+    A.superclass.constructor.call(this, cfg);
+  }
+  
+  var ATTRS = {
+    box: {
+      value: null, 
+      getter: function(v){
+        return $(v);
+      }
+      ,setter: function(v){
+        return $(v);
+      }
+    }
+    ,elTrigger: {value: '.J_AlbumSlideItem'}
+
+    ,album: {value: null}
+  };
+  var o = {
+    initializer: function(){
+    }
+
+    ,_equipAlbum: function(){
+      var album = new Album({
+        box: this.get('box')
+        ,elTrigger: this.get('elTrigger')
+      });
+
+      album.on('close', this.destory);
+
+      this.resetWidth();
+
+      this.set('album', album);
+    }
+
+    ,resetWidth: function(){
+      var box = this.get('box');
+      var elTrigger = this.get('elTrigger');
+
+      if(box){
+        box.children().each(function(c){
+          c.width(document.documentElement.clientWidth);
+        });
+      }
+    }
+
+    ,"render": function(data){
+      this.set('data', data);
+
+      var html = new XT(AlbumXtpl).render({
+        data: this.get('data')
+      });
+
+      var albumDom = $(html);
+      albumDom.css('opacity', 0);
+      albumDom.appendTo($(document.body));
+
+      setTimeout(function(){
+        albumDom.animate({
+          opacity: 1
+        }, 0.5);
+      }, 20);
+
+      this.set('box', '#J_AlbumMBox');
+      this.set('elTrigger', '.J_AlbumSlideItem');
+      this._equipAlbum();
+    }
+
+    ,"show": function(){
+
+    }
+    ,"hide": function(){
+
+    }
+    ,"destory": function(){
+      var self = this;
+      var boxWrap = this.get('box').parent();
+      boxWrap.animate({
+        opacity: 0
+      }, 0.5, 'ease', function(){
+        boxWrap.remove();
+      })
+    }
+
+  };
+
+  S.extend(A, Base, o, {
+    ATTRS: ATTRS
+  });
+
+  return A;
+}, {
+  requires: ['base', 'node', 'xtemplate', './album', './album-xtpl', './mobilealbum-style.css']
+});
